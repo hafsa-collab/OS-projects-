@@ -1,75 +1,141 @@
-<header>
+/*
+ * Description: A multi-threaded utility class that prints characters
+ *              of a string in round-robin order across specified threads.
+ */
 
-<!--
-  <<< Author notes: Course header >>>
-  Include a 1280×640 image, course title in sentence case, and a concise description in emphasis.
-  In your repository settings: enable template repository, add your 1280×640 social image, auto delete head branches.
-  Add your open source license, GitHub uses MIT license.
--->
+#include <iostream>
+#include <string>
+#include <mutex>
+#include <vector>
+#include <condition_variable>
+#include <thread>
+#include <chrono>
 
-# Introduction to GitHub
+using namespace std;
 
-_Get started using GitHub in less than an hour._
+class MyPrinter {
+private:
+   string str;         // Input string to be printed
+   int char_count;     // Number of characters each thread prints per turn
+   int thread_count;   // Total number of threads participating
+   vector<thread> threads;       // Stores thread objects
+   vector<std::thread::id> thread_ids;  // Maps system thread IDs to logical indices
+   int thread_id;      // Unused in current implementation
+   int allowed_thread; // Index of the thread allowed to print next (0-based)
+   mutex mutex_lock;   // Mutex for synchronization
+   condition_variable cv;  // Condition variable for thread coordination
+   int next_char;      // Position of next character to print in the string
 
-</header>
+public:
+    // Constructor initializes core parameters
+    MyPrinter(string s, int c_count, int t_count) {
+        str = s;
+        char_count = c_count;
+        thread_count = t_count;
+        thread_id = 0;          // Currently unused
+        next_char = 0;          // Start from beginning of string
+        allowed_thread = 0;     // First thread to print is index 0
+    }
 
-<!--
-  <<< Author notes: Step 1 >>>
-  Choose 3-5 steps for your course.
-  The first step is always the hardest, so pick something easy!
-  Link to docs.github.com for further explanations.
-  Encourage users to open new tabs for steps!
--->
+    // Converts system thread ID to our logical thread index (0-based)
+    int getCurrentThreadId(const std::thread::id& id) {
+        int thread_id = 0;
+        for(auto& e : thread_ids) {
+            if(e == id) return thread_id;
+            thread_id++;
+        }
+        return -1;  // Indicates invalid thread ID
+    }
 
-## Step 1: Create a branch
+    // Main method to start and manage threads
+    void run() {
+        // Create and launch all threads
+        for (int i = 0; i < thread_count; i++) {
+            thread t(&MyPrinter::print_thread, this);
+            cout << "Thread " << t.get_id() <<  " is " << i << endl;
+            thread_ids.push_back(t.get_id());
+            threads.push_back(move(t));
+        }
 
-_Welcome to "Introduction to GitHub"! :wave:_
+        // Wait for all threads to complete execution
+        for (int i = 0; i < thread_count; i++){
+            threads[i].join();
+        }
+    }
 
-**What is GitHub?**: GitHub is a collaboration platform that uses _[Git](https://docs.github.com/get-started/quickstart/github-glossary#git)_ for versioning. GitHub is a popular place to share and contribute to [open-source](https://docs.github.com/get-started/quickstart/github-glossary#open-source) software.
-<br>:tv: [Video: What is GitHub?](https://www.youtube.com/watch?v=pBy1zgt0XPc)
+    // Busy-wait until all threads are initialized (caution: CPU intensive)
+    void waitforallthreadinit() {
+        while(1) {
+            if(thread_count == thread_ids.size()) return;
+        }
+    }
 
-**What is a repository?**: A _[repository](https://docs.github.com/get-started/quickstart/github-glossary#repository)_ is a project containing files and folders. A repository tracks versions of files and folders. For more information, see "[About repositories](https://docs.github.com/en/repositories/creating-and-managing-repositories/about-repositories)" from GitHub Docs.
+    // Thread execution function managing print synchronization
+    void print_thread() {
+        while(1) {
+            waitforallthreadinit();  // Ensure all threads are ready
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            
+            // Lock mutex and wait for turn using condition variable
+            unique_lock<mutex> lock(mutex_lock);
+            cv.wait(lock, [this] { 
+                // Only wake if current thread is next in allowed_thread order
+                return std::this_thread::get_id() == thread_ids[allowed_thread]; 
+            });
+            
+            print_chars();  // Perform actual character printing
+            
+            // Update allowed_thread index with wrap-around
+            allowed_thread++;
+            if(allowed_thread == thread_count) allowed_thread = 0;
+            
+            // Adjust next_char position if exceeding string length
+            if(next_char >= str.length()) next_char -= str.length();
+            
+            lock.unlock();
+            cv.notify_all();  // Alert other threads to check their turn
+        }
+    }
 
-**What is a branch?**: A _[branch](https://docs.github.com/en/get-started/quickstart/github-glossary#branch)_ is a parallel version of your repository. By default, your repository has one branch named `main` and it is considered to be the definitive branch. Creating additional branches allows you to copy the `main` branch of your repository and safely make any changes without disrupting the main project. Many people use branches to work on specific features without affecting any other parts of the project.
+    // Prints assigned characters and updates next_char position
+    void print_chars() {
+        cout << "ThreadId " << getCurrentThreadId(std::this_thread::get_id()) << " : ";
+        int printcount = 0;
+        
+        // Print characters from current position to end of string
+        for(int i=next_char; i < str.length() && printcount < char_count; i++){
+            cout << str[i];
+            printcount++;
+        }
+        
+        // If needed, wrap around to beginning of string
+        if(printcount < char_count) {
+            for(int i=0; i<char_count - printcount; i++) {
+                cout << str[i];
+            }
+        }
+        
+        // Update next_char position (may exceed string length temporarily)
+        next_char = next_char + char_count;
+        cout << endl;
+    }
+};
 
-Branches allow you to separate your work from the `main` branch. In other words, everyone's work is safe while you contribute. For more information, see "[About branches](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/about-branches)".
+int main(int argc, char *argv[]) {
+    // Validate command line arguments
+    if (argc != 4) {
+        cout << "Please provide 3 arguments - a string, char count & thread count" << endl;
+        return 1;
+    }
 
-**What is a profile README?**: A _[profile README](https://docs.github.com/account-and-profile/setting-up-and-managing-your-github-profile/customizing-your-profile/managing-your-profile-readme)_ is essentially an "About me" section on your GitHub profile where you can share information about yourself with the community on GitHub.com. GitHub shows your profile README at the top of your profile page. For more information, see "[Managing your profile README](https://docs.github.com/en/account-and-profile/setting-up-and-managing-your-github-profile/customizing-your-profile/managing-your-profile-readme)".
+    // Parse input parameters
+    string str = argv[1];
+    int char_count = atoi(argv[2]);
+    int thread_count = atoi(argv[3]);
+    
+    // Create printer instance and start processing
+    MyPrinter p(str, char_count, thread_count);
+    p.run();
 
-![profile-readme-example](/images/profile-readme-example.png)
-
-### :keyboard: Activity: Your first branch
-
-1. Open a new browser tab and navigate to your newly made repository. Then, work on the steps in your second tab while you read the instructions in this tab.
-2. Navigate to the **< > Code** tab in the header menu of your repository.
-
-   ![code-tab](/images/code-tab.png)
-
-3. Click on the **main** branch drop-down.
-
-   ![main-branch-dropdown](/images/main-branch-dropdown.png)
-
-4. In the field, name your branch `my-first-branch`. In this case, the name must be `my-first-branch` to trigger the course workflow.
-5. Click **Create branch: my-first-branch** to create your branch.
-
-   ![create-branch-button](/images/create-branch-button.png)
-
-   The branch will automatically switch to the one you have just created.
-   The **main** branch drop-down bar will reflect your new branch and display the new branch name.
-
-6. Wait about 20 seconds then refresh this page (the one you're following instructions from). [GitHub Actions](https://docs.github.com/en/actions) will automatically update to the next step.
-
-<footer>
-
-<!--
-  <<< Author notes: Footer >>>
-  Add a link to get support, GitHub status page, code of conduct, license link.
--->
-
----
-
-Get help: [Post in our discussion board](https://github.com/orgs/skills/discussions/categories/introduction-to-github) &bull; [Review the GitHub status page](https://www.githubstatus.com/)
-
-&copy; 2024 GitHub &bull; [Code of Conduct](https://www.contributor-covenant.org/version/2/1/code_of_conduct/code_of_conduct.md) &bull; [MIT License](https://gh.io/mit)
-
-</footer>
+    return 0;
+}
