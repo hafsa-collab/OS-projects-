@@ -12,16 +12,16 @@ using namespace std;
 
 class MyPrinter {
 private:
-   string str;         // Input string to be printed
-   int char_count;     // Number of characters each thread prints per turn
-   int thread_count;   // Total number of threads participating
-   vector<thread> threads;       // Stores thread objects
-   vector<std::thread::id> thread_ids;  // Maps system thread IDs to logical indices
-   int thread_id;      // Unused in current implementation
-   int allowed_thread; // Index of the thread allowed to print next (0-based)
-   mutex mutex_lock;   // Mutex for synchronization
-   condition_variable cv;  // Condition variable for thread coordination
-   int next_char;      // Position of next character to print in the string
+    string str;                         // Input string to be printed
+    int char_count;                     // Number of characters each thread prints per turn
+    int thread_count;                   // Total number of threads participating
+    vector<thread> threads;             // Stores thread objects
+    vector<std::thread::id> thread_ids; // Maps system thread IDs to logical indices
+    int thread_id;                      // Unused in current implementation
+    int allowed_thread;                 // Index of the thread allowed to print next (0-based)
+    mutex mutex_lock;                   // Mutex for synchronization
+    condition_variable cv;              // Condition variable for thread coordination
+    int next_char;                      // Position of next character to print in the string
 
 public:
     // Constructor initializes core parameters
