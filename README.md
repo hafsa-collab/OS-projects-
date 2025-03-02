@@ -1,7 +1,4 @@
-/*
- * Description: A multi-threaded utility class that prints characters
- *              of a string in round-robin order across specified threads.
- */
+/* Description: A multi-threaded utility class that prints characters of a string in round-robin order across specified threads.*/
 
 #include <iostream>
 #include <string>
